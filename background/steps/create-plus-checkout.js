@@ -1826,64 +1826,56 @@ function FindProxyForURL(url, host) {
       }
       let stage = String(ready.pageState?.hostedStage || '').trim();
       if (stage === 'pay_login' || stage === 'account_create_email') {
-        let advanced = null;
-        for (let attempt = 1; attempt <= 2; attempt += 1) {
-          await addNodeLog(nodeId, nodeId, visibleStep, `步骤 ${visibleStep}：检测到 PayPal 邮箱页，正在填写邮箱并继续（第 ${attempt}/2 次）...`, 'info', { visibleStep });
-          const submitResult = await runHostedCheckoutPayPalStep(tabId, {
-            ...guestProfile,
-            email: guestProfile.email,
-          });
-          await addNodeLog(
-            nodeId,
-            nodeId,
-            visibleStep,
-            `步骤 ${visibleStep}：PayPal 邮箱页提交结果：${JSON.stringify({
-              submitted: Boolean(submitResult?.submitted),
-              generatedEmail: submitResult?.generatedEmail || '',
-              nextExpected: submitResult?.nextExpected || '',
-            })}`,
-            'info',
-            { visibleStep }
-          );
-          advanced = await waitForHostedPayPalStage(
-            tabId,
-            (pageState) => (
-              pageState.hostedStage === 'verification'
-              || pageState.hostedStage === 'guest_checkout'
-              || pageState.hostedStage === 'review_consent'
-            ),
-            {
-              timeoutMs: 15000,
-              timeoutMessage: `步骤 ${visibleStep}：PayPal 邮箱提交后暂未进入下一页面。`,
-            }
-          ).catch((error) => {
-            if (/邮箱提交后暂未进入下一页面/.test(String(error?.message || ''))) {
-              return null;
-            }
-            throw error;
-          });
-          if (advanced?.success) {
-            await addNodeLog(nodeId, nodeId, visibleStep, `步骤 ${visibleStep}：PayPal 邮箱页提交后已进入支付成功页。`, 'ok', { visibleStep });
-            await completeNodeFromBackground(nodeId, {});
-            return;
+        await addNodeLog(nodeId, nodeId, visibleStep, `步骤 ${visibleStep}：检测到 PayPal 邮箱页，只执行填写邮箱并点击提交...`, 'info', { visibleStep });
+        const submitResult = await runHostedCheckoutPayPalStep(tabId, {
+          ...guestProfile,
+          email: guestProfile.email,
+        });
+        await addNodeLog(
+          nodeId,
+          nodeId,
+          visibleStep,
+          `步骤 ${visibleStep}：PayPal 邮箱页提交结果：${JSON.stringify({
+            submitted: Boolean(submitResult?.submitted),
+            generatedEmail: submitResult?.generatedEmail || '',
+            nextExpected: submitResult?.nextExpected || '',
+          })}`,
+          'info',
+          { visibleStep }
+        );
+        const advanced = await waitForHostedPayPalStage(
+          tabId,
+          (pageState) => (
+            pageState.hostedStage === 'verification'
+            || pageState.hostedStage === 'guest_checkout'
+            || pageState.hostedStage === 'review_consent'
+          ),
+          {
+            timeoutMs: 15000,
+            timeoutMessage: `步骤 ${visibleStep}：PayPal 邮箱提交后暂未进入下一页面。`,
           }
-          if (advanced?.leftPayPal) {
-            stage = String(advanced.pageState?.hostedStage || 'left_paypal');
-            await addNodeLog(nodeId, nodeId, visibleStep, `步骤 ${visibleStep}：PayPal 邮箱页提交后已离开 PayPal，当前阶段为 ${stage}。`, 'ok', { visibleStep });
-            break;
+        ).catch((error) => {
+          if (/邮箱提交后暂未进入下一页面/.test(String(error?.message || ''))) {
+            return null;
           }
-          const advancedStage = String(advanced?.pageState?.hostedStage || '').trim();
-          if (advancedStage && advancedStage !== 'pay_login' && advancedStage !== 'account_create_email') {
-            stage = advancedStage;
-            await addNodeLog(nodeId, nodeId, visibleStep, `步骤 ${visibleStep}：PayPal 邮箱页已进入下一阶段：${stage}。`, 'ok', { visibleStep });
-            break;
-          }
-          if (attempt < 2) {
-            await addNodeLog(nodeId, nodeId, visibleStep, `步骤 ${visibleStep}：PayPal 邮箱提交后仍停留在邮箱页，准备重试点击继续。`, 'warn', { visibleStep });
-          }
+          throw error;
+        });
+        if (advanced?.success) {
+          await addNodeLog(nodeId, nodeId, visibleStep, `步骤 ${visibleStep}：PayPal 邮箱页提交后已进入支付成功页。`, 'ok', { visibleStep });
+          await completeNodeFromBackground(nodeId, {});
+          return;
+        }
+        if (advanced?.leftPayPal) {
+          stage = String(advanced.pageState?.hostedStage || 'left_paypal');
+          await addNodeLog(nodeId, nodeId, visibleStep, `步骤 ${visibleStep}：PayPal 邮箱页提交后已离开 PayPal，当前阶段为 ${stage}。`, 'ok', { visibleStep });
+        }
+        const advancedStage = String(advanced?.pageState?.hostedStage || '').trim();
+        if (advancedStage && advancedStage !== 'pay_login' && advancedStage !== 'account_create_email') {
+          stage = advancedStage;
+          await addNodeLog(nodeId, nodeId, visibleStep, `步骤 ${visibleStep}：PayPal 邮箱页已进入下一阶段：${stage}。`, 'ok', { visibleStep });
         }
         if (!advanced) {
-          throw new Error(`步骤 ${visibleStep}：PayPal 邮箱已填写并尝试点击继续，但页面仍未进入验证码或卡支付页。请检查 PayPal 页面是否有邮箱错误、验证码/风控提示或按钮未启用。`);
+          throw new Error(`步骤 ${visibleStep}：PayPal 邮箱已填写并点击提交，但页面仍未进入验证码或卡支付页。请检查 PayPal 页面是否有邮箱错误、验证码/风控提示或按钮未启用。`);
         }
       } else {
         await addNodeLog(nodeId, nodeId, visibleStep, `步骤 ${visibleStep}：PayPal 邮箱页已通过，当前页面阶段为 ${stage || 'unknown'}。`, 'ok', { visibleStep });
