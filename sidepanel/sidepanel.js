@@ -905,6 +905,7 @@ function getStepDefinitionsForMode(plusModeEnabled = false, options = {}) {
     activeFlowId: String(activeFlowId || '').trim().toLowerCase() || defaultFlowId,
     plusModeEnabled,
     plusPaymentMethod: normalizePlusPaymentMethod(rawPaymentMethod),
+    plusHostedCheckoutIsFinalStep: true,
     signupMethod: normalizeSignupMethod(rawSignupMethod),
     phoneSignupReloginAfterBindEmailEnabled,
   };
@@ -951,6 +952,7 @@ function getWorkflowNodesForMode(plusModeEnabled = false, options = {}) {
     activeFlowId: String(activeFlowId || '').trim().toLowerCase() || defaultFlowId,
     plusModeEnabled,
     plusPaymentMethod: normalizePlusPaymentMethod(rawPaymentMethod),
+    plusHostedCheckoutIsFinalStep: true,
     signupMethod: normalizeSignupMethod(rawSignupMethod),
     phoneSignupReloginAfterBindEmailEnabled,
   };
@@ -9780,7 +9782,7 @@ function syncStepDefinitionsForMode(plusModeEnabled = false, plusPaymentMethodOr
 
   rebuildStepDefinitionState(nextPlusModeEnabled, {
     activeFlowId: nextActiveFlowId,
-    ...(useNoRtWorkflow ? { panelMode: nextPanelMode } : {}),
+    ...(nextPanelMode ? { panelMode: nextPanelMode } : {}),
     plusPaymentMethod: nextPaymentMethod,
     plusAccountAccessStrategy: nextAccountAccessStrategy,
     signupMethod: nextSignupMethod,

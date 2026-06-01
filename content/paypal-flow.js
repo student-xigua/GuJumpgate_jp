@@ -221,6 +221,7 @@ function findLoginNextButton() {
 function findEmailNextButton() {
   return findClickableByText([
     /next|btn\s*next|btnnext/i,
+    /continue|続行|次へ|支払(?:い|う)?に進む/i,
     /下一页|下一步/i,
   ]);
 }
@@ -253,8 +254,17 @@ function isPayPalHostedLoginPage() {
 function findHostedAccountCreateEmailContinueButton() {
   return findClickableByText([
     /continue\s+(?:to\s+)?pay(?:ment)?/i,
+    /continue|続行|次へ|支払(?:い|う)?に進む/i,
     /继续付款|继续支付/i,
   ]);
+}
+
+
+function isPayPalHostedSignupNoMatchPage() {
+  const pathname = getPayPalHostedPathname();
+  const search = String(location?.search || '');
+  return /\/checkoutweb\/signup/i.test(pathname)
+    && /(?:^|[?&])ulPage=noMatch(?:&|$)/i.test(search);
 }
 
 function isPayPalHostedAccountCreateEmailPage() {
@@ -266,6 +276,11 @@ function isPayPalHostedAccountCreateEmailPage() {
     || document.getElementById('cardExpiry')
     || document.getElementById('cardCvv')
   );
+  if (isPayPalHostedSignupNoMatchPage()) {
+    return Boolean(emailInput)
+      && !findPasswordInput()
+      && !hasCardOrAddressForm;
+  }
   return Boolean(emailInput)
     && !findPasswordInput()
     && !hasCardOrAddressForm
@@ -278,6 +293,10 @@ function isPayPalHostedAccountCreateEmailPage() {
 
 function isPayPalHostedGuestCheckoutPage() {
   const pathname = getPayPalHostedPathname();
+  if (isPayPalHostedSignupNoMatchPage()) {
+    return Boolean(document.getElementById('cardNumber'))
+      || Boolean(document.getElementById('billingLine1'));
+  }
   return /\/checkoutweb\//i.test(pathname)
     || Boolean(document.getElementById('cardNumber'))
     || Boolean(document.getElementById('billingLine1'));
@@ -390,17 +409,64 @@ function fillHostedInputById(id, value) {
   return true;
 }
 
+function fillHostedInputByIdCandidates(ids, value) {
+  return (Array.isArray(ids) ? ids : [ids]).some((id) => fillHostedInputById(id, value));
+}
+
+function fillHostedInputByPattern(patterns, value, options = {}) {
+  const normalizedPatterns = (Array.isArray(patterns) ? patterns : [patterns]).filter(Boolean);
+  const used = options.used instanceof Set ? options.used : null;
+  const inputs = getVisibleControls('input')
+    .filter((input) => {
+      if (!isEnabledControl(input) || used?.has(input)) {
+        return false;
+      }
+      const type = String(input.getAttribute('type') || input.type || '').trim().toLowerCase();
+      return !['hidden', 'checkbox', 'radio', 'submit', 'button', 'file'].includes(type);
+    });
+  const input = inputs.find((candidate) => {
+    const text = getActionText(candidate);
+    return normalizedPatterns.some((pattern) => pattern.test(text));
+  });
+  if (!input) {
+    return false;
+  }
+  fillInput(input, String(value || ''));
+  used?.add(input);
+  return true;
+}
+
+function getVisibleHostedTextInputs() {
+  return getVisibleControls('input')
+    .filter((input) => {
+      if (!isEnabledControl(input)) {
+        return false;
+      }
+      const type = String(input.getAttribute('type') || input.type || '').trim().toLowerCase();
+      return !['hidden', 'checkbox', 'radio', 'submit', 'button', 'file'].includes(type);
+    });
+}
+
+function findHostedSelectByIdCandidates(ids) {
+  return (Array.isArray(ids) ? ids : [ids])
+    .map((id) => document.getElementById(String(id || '').trim()))
+    .find((select) => select && isVisibleElement(select) && isEnabledControl(select) && select.options) || null;
+}
+
 function selectHostedOptionByIdText(id, text) {
-  const select = document.getElementById(String(id || '').trim());
+  const select = findHostedSelectByIdCandidates(id);
   const expectedText = normalizeText(text);
   if (!select || !expectedText || !Array.isArray(Array.from(select.options || []))) {
     return false;
   }
+  const expectedValues = Array.isArray(text) ? text.map(normalizeText).filter(Boolean) : [expectedText];
   const match = Array.from(select.options || []).find((option) => {
     const label = normalizeText(option?.textContent || option?.label || '');
     const value = normalizeText(option?.value || '');
-    return label.toLowerCase().includes(expectedText.toLowerCase())
-      || value.toLowerCase().includes(expectedText.toLowerCase());
+    return expectedValues.some((expected) => (
+      label.toLowerCase().includes(expected.toLowerCase())
+      || value.toLowerCase().includes(expected.toLowerCase())
+    ));
   });
   if (!match) {
     return false;
@@ -408,6 +474,193 @@ function selectHostedOptionByIdText(id, text) {
   select.value = match.value;
   select.dispatchEvent(new Event('change', { bubbles: true }));
   return true;
+}
+
+function getJapanesePrefectureCandidates(value = '') {
+  const normalized = normalizeText(value);
+  const key = normalized.toLowerCase().replace(/[-_\s]/g, '');
+  const prefectures = {
+    hokkaido: ['Hokkaido', '北海道'],
+    aomori: ['Aomori', '青森県'],
+    iwate: ['Iwate', '岩手県'],
+    miyagi: ['Miyagi', '宮城県'],
+    akita: ['Akita', '秋田県'],
+    yamagata: ['Yamagata', '山形県'],
+    fukushima: ['Fukushima', '福島県'],
+    ibaraki: ['Ibaraki', '茨城県'],
+    tochigi: ['Tochigi', '栃木県'],
+    gunma: ['Gunma', '群馬県'],
+    saitama: ['Saitama', '埼玉県'],
+    chiba: ['Chiba', '千葉県'],
+    tokyo: ['Tokyo', '東京都'],
+    kanagawa: ['Kanagawa', '神奈川県'],
+    niigata: ['Niigata', '新潟県'],
+    toyama: ['Toyama', '富山県'],
+    ishikawa: ['Ishikawa', '石川県'],
+    fukui: ['Fukui', '福井県'],
+    yamanashi: ['Yamanashi', '山梨県'],
+    nagano: ['Nagano', '長野県'],
+    gifu: ['Gifu', '岐阜県'],
+    shizuoka: ['Shizuoka', '静岡県'],
+    aichi: ['Aichi', '愛知県'],
+    mie: ['Mie', '三重県'],
+    shiga: ['Shiga', '滋賀県'],
+    kyoto: ['Kyoto', '京都府'],
+    osaka: ['Osaka', '大阪府'],
+    hyogo: ['Hyogo', '兵庫県'],
+    nara: ['Nara', '奈良県'],
+    wakayama: ['Wakayama', '和歌山県'],
+    tottori: ['Tottori', '鳥取県'],
+    shimane: ['Shimane', '島根県'],
+    okayama: ['Okayama', '岡山県'],
+    hiroshima: ['Hiroshima', '広島県'],
+    yamaguchi: ['Yamaguchi', '山口県'],
+    tokushima: ['Tokushima', '徳島県'],
+    kagawa: ['Kagawa', '香川県'],
+    ehime: ['Ehime', '愛媛県'],
+    kochi: ['Kochi', '高知県'],
+    fukuoka: ['Fukuoka', '福岡県'],
+    saga: ['Saga', '佐賀県'],
+    nagasaki: ['Nagasaki', '長崎県'],
+    kumamoto: ['Kumamoto', '熊本県'],
+    oita: ['Oita', '大分県'],
+    miyazaki: ['Miyazaki', '宮崎県'],
+    kagoshima: ['Kagoshima', '鹿児島県'],
+    okinawa: ['Okinawa', '沖縄県'],
+  };
+  const candidates = prefectures[key] || [];
+  if (normalized) candidates.unshift(normalized);
+  return Array.from(new Set(candidates));
+}
+
+function pickHostedRandomJapanIdentity() {
+  const identities = [
+    { firstName: 'Haruto', lastName: 'Sato', firstNameKana: 'ハルト', lastNameKana: 'サトウ' },
+    { firstName: 'Yuto', lastName: 'Suzuki', firstNameKana: 'ユウト', lastNameKana: 'スズキ' },
+    { firstName: 'Sota', lastName: 'Takahashi', firstNameKana: 'ソウタ', lastNameKana: 'タカハシ' },
+    { firstName: 'Ren', lastName: 'Tanaka', firstNameKana: 'レン', lastNameKana: 'タナカ' },
+    { firstName: 'Yui', lastName: 'Watanabe', firstNameKana: 'ユイ', lastNameKana: 'ワタナベ' },
+    { firstName: 'Aoi', lastName: 'Ito', firstNameKana: 'アオイ', lastNameKana: 'イトウ' },
+    { firstName: 'Rin', lastName: 'Yamamoto', firstNameKana: 'リン', lastNameKana: 'ヤマモト' },
+    { firstName: 'Hina', lastName: 'Nakamura', firstNameKana: 'ヒナ', lastNameKana: 'ナカムラ' },
+    { firstName: 'Kaito', lastName: 'Kobayashi', firstNameKana: 'カイト', lastNameKana: 'コバヤシ' },
+    { firstName: 'Mei', lastName: 'Kato', firstNameKana: 'メイ', lastNameKana: 'カトウ' },
+  ];
+  return identities[Math.floor(Math.random() * identities.length)];
+}
+
+function buildHostedRandomBirthDate() {
+  const currentYear = new Date().getFullYear();
+  const year = currentYear - (Math.floor(Math.random() * 32) + 24);
+  const month = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
+  const day = String(Math.floor(Math.random() * 28) + 1).padStart(2, '0');
+  return `${year}/${month}/${day}`;
+}
+
+function shouldReplaceHostedDefaultName(firstName = '', lastName = '') {
+  return /^james$/i.test(normalizeText(firstName)) && /^smith$/i.test(normalizeText(lastName));
+}
+
+function buildHostedJapanNameProfile(payload = {}) {
+  const randomIdentity = pickHostedRandomJapanIdentity();
+  const payloadFirstName = normalizeText(payload.firstName || '');
+  const payloadLastName = normalizeText(payload.lastName || '');
+  const usePayloadName = payloadFirstName && payloadLastName && !shouldReplaceHostedDefaultName(payloadFirstName, payloadLastName);
+  return {
+    firstName: usePayloadName ? payloadFirstName : randomIdentity.firstName,
+    lastName: usePayloadName ? payloadLastName : randomIdentity.lastName,
+    firstNameKana: normalizeText(payload.firstNameKana || payload.givenNameKana || randomIdentity.firstNameKana),
+    lastNameKana: normalizeText(payload.lastNameKana || payload.familyNameKana || randomIdentity.lastNameKana),
+    birthDate: normalizeText(payload.birthDate || payload.dob || buildHostedRandomBirthDate()),
+  };
+}
+
+function fillHostedBirthday(value = '') {
+  const birthDate = normalizeText(value || buildHostedRandomBirthDate());
+  const [year = '1990', month = '01', day = '01'] = birthDate.split(/[/-]/).map((part) => part.padStart(2, '0'));
+  return fillHostedInputByIdCandidates(['dateOfBirth', 'birthDate', 'dob', 'birthday'], `${year}/${month}/${day}`)
+    || fillHostedInputByPattern([
+      /birth|dob|birthday|生年月日|年\/月\/日|yyyy|yyyy\/mm\/dd|date/i,
+    ], `${year}/${month}/${day}`)
+    || (
+      fillHostedInputByIdCandidates(['birthYear', 'dobYear', 'year'], year)
+      && fillHostedInputByIdCandidates(['birthMonth', 'dobMonth', 'month'], month)
+      && fillHostedInputByIdCandidates(['birthDay', 'dobDay', 'day'], day)
+    );
+}
+
+function fillHostedJapanKanaNames(profile = {}) {
+  const used = new Set();
+  const fallbackIdentity = pickHostedRandomJapanIdentity();
+  const firstKana = normalizeText(profile.firstNameKana || fallbackIdentity.firstNameKana);
+  const lastKana = normalizeText(profile.lastNameKana || fallbackIdentity.lastNameKana);
+
+  const firstFilled = fillHostedInputByIdCandidates([
+    'firstNameKana',
+    'firstNameKana-kanji',
+    'givenNameKana',
+    'firstNameFurigana',
+    'givenNameFurigana',
+    'firstNamePhonetic',
+    'givenNamePhonetic',
+    'kanaFirstName',
+  ], firstKana)
+    || fillHostedInputByPattern([
+      /first.*kana|given.*kana|kana.*first|first.*furigana|given.*furigana|first.*phonetic|given.*phonetic|名.*(?:かな|カナ)|(?:かな|カナ).*名/i,
+    ], firstKana, { used });
+
+  const lastFilled = fillHostedInputByIdCandidates([
+    'lastNameKana',
+    'lastNameKana-kanji',
+    'familyNameKana',
+    'lastNameFurigana',
+    'familyNameFurigana',
+    'lastNamePhonetic',
+    'familyNamePhonetic',
+    'kanaLastName',
+  ], lastKana)
+    || fillHostedInputByPattern([
+      /last.*kana|family.*kana|surname.*kana|kana.*last|last.*furigana|family.*furigana|last.*phonetic|family.*phonetic|姓.*(?:かな|カナ)|(?:かな|カナ).*姓/i,
+    ], lastKana, { used });
+
+  if (firstFilled && lastFilled) {
+    return true;
+  }
+
+  const visibleInputs = getVisibleHostedTextInputs();
+  const firstNameInput = document.getElementById('firstName') || document.getElementById('fname');
+  const lastNameInput = document.getElementById('lastName') || document.getElementById('lname');
+  const emptyKanaInputs = getVisibleHostedTextInputs()
+    .filter((input) => !normalizeText(input.value || ''))
+    .filter((input) => input !== firstNameInput && input !== lastNameInput)
+    .filter((input) => {
+      const text = getActionText(input);
+      return /名|姓|かな|カナ|kana|furigana|phonetic/i.test(text);
+    });
+
+  const emptyNameSectionInputs = visibleInputs
+    .filter((input) => !normalizeText(input.value || ''))
+    .filter((input) => input !== firstNameInput && input !== lastNameInput)
+    .filter((input) => {
+      const rect = input.getBoundingClientRect();
+      const firstNameRect = firstNameInput?.getBoundingClientRect?.();
+      const lastNameRect = lastNameInput?.getBoundingClientRect?.();
+      const referenceTop = Math.max(firstNameRect?.top || 0, lastNameRect?.top || 0);
+      return rect.top >= referenceTop - 320 && rect.top <= referenceTop + 120;
+    });
+
+  const fallbackInputs = emptyKanaInputs.length >= 2 ? emptyKanaInputs : emptyNameSectionInputs;
+  let filledCount = 0;
+  if (!firstFilled && fallbackInputs[0]) {
+    fillInput(fallbackInputs[0], firstKana);
+    filledCount += 1;
+  }
+  if (!lastFilled && fallbackInputs[1]) {
+    fillInput(fallbackInputs[1], lastKana);
+    filledCount += 1;
+  }
+  log(`PayPal guest checkout：假名姓名填写结果 first=${firstFilled || Boolean(fallbackInputs[0])} last=${lastFilled || Boolean(fallbackInputs[1])} fallbackCount=${filledCount}`, 'info');
+  return firstFilled || lastFilled || filledCount > 0;
 }
 
 function removeHostedCaptchaArtifacts() {
@@ -705,8 +958,9 @@ async function fillHostedGuestCheckout(payload = {}) {
 
   await sleep(2000);
   const countrySelect = document.getElementById('country');
-  if (countrySelect && String(countrySelect.value || '').trim().toUpperCase() !== 'US') {
-    countrySelect.value = 'US';
+  const countryCode = normalizeText(payload.countryCode || payload.address?.countryCode || 'US').toUpperCase() || 'US';
+  if (countrySelect && String(countrySelect.value || '').trim().toUpperCase() !== countryCode) {
+    countrySelect.value = countryCode;
     countrySelect.dispatchEvent(new Event('change', { bubbles: true }));
     await sleep(3000);
   }
@@ -715,8 +969,9 @@ async function fillHostedGuestCheckout(payload = {}) {
   const email = normalizeText(payload.email || buildHostedRandomEmail());
   const phone = normalizeText(payload.phone || '');
   const password = String(payload.password || buildHostedRandomPassword());
-  const firstName = normalizeText(payload.firstName || 'James');
-  const lastName = normalizeText(payload.lastName || 'Smith');
+  const nameProfile = buildHostedJapanNameProfile(payload);
+  const firstName = nameProfile.firstName;
+  const lastName = nameProfile.lastName;
   const cardNumber = String(payload.cardNumber || card.number).replace(/\s+/g, '');
   const cardExpiry = normalizeText(payload.cardExpiry || card.expiry);
   const cardCvv = normalizeText(payload.cardCvv || card.cvv);
@@ -726,6 +981,7 @@ async function fillHostedGuestCheckout(payload = {}) {
     throw new Error('PayPal hosted checkout 缺少卡支付所需资料（请先填写 PayPal 电话(不带+1) 或导入 PayPal 接码池）。');
   }
 
+  log(`PayPal guest checkout：随机姓名档案 ${lastName}/${firstName}，假名 ${nameProfile.lastNameKana}/${nameProfile.firstNameKana}，生日 ${nameProfile.birthDate}`, 'info');
   fillHostedInputById('email', email);
   fillHostedInputById('phone', phone);
   fillHostedInputById('cardNumber', cardNumber);
@@ -734,29 +990,25 @@ async function fillHostedGuestCheckout(payload = {}) {
   fillHostedInputById('password', password);
   fillHostedInputById('firstName', firstName);
   fillHostedInputById('lastName', lastName);
-  fillHostedInputById('billingLine1', address.street || '');
-  fillHostedInputById('billingCity', address.city || '');
-  fillHostedInputById('billingPostalCode', address.zip || '');
-  fillHostedInputById('billingLine1', address.street || '');
-  selectHostedOptionByIdText('billingState', address.state || '');
+  fillHostedBirthday(nameProfile.birthDate);
+  fillHostedJapanKanaNames(nameProfile);
+  fillHostedInputByIdCandidates(['billingLine1', 'billingAddressLine1', 'addressLine1', 'line1'], address.street || '');
+  fillHostedInputByIdCandidates(['billingCity', 'billingLocality', 'city', 'locality'], address.city || '');
+  fillHostedInputByIdCandidates(['billingPostalCode', 'postalCode', 'zipCode', 'zip'], address.zip || '');
+  selectHostedOptionByIdText(
+    ['billingState', 'billingAdministrativeArea', 'state', 'administrativeArea'],
+    getJapanesePrefectureCandidates(address.state || '')
+  );
 
-  const rootScope = typeof window !== 'undefined' ? window : globalThis;
-  if (!rootScope[PAYPAL_HOSTED_GUEST_SUBMIT_SENTINEL]) {
-    rootScope[PAYPAL_HOSTED_GUEST_SUBMIT_SENTINEL] = true;
-    setTimeout(() => {
-      clickHostedGenericSubmitButton(0).catch((error) => {
-        log(`PayPal hosted checkout guest submit 失败：${error?.message || error}`, 'warn');
-      }).finally(() => {
-        rootScope[PAYPAL_HOSTED_GUEST_SUBMIT_SENTINEL] = false;
-      });
-    }, 500);
-  }
+  log('PayPal guest checkout：卡支付页资料已填写完成，按当前配置不自动提交，请手动检查并提交。', 'info');
 
   return {
     stage: PAYPAL_HOSTED_STAGE_GUEST_CHECKOUT,
-    submitted: true,
+    filled: true,
+    submitted: false,
+    manualSubmitRequired: true,
     verificationRequired: Boolean(hasHostedVerificationInputs()),
-    submitScheduled: true,
+    submitScheduled: false,
   };
 }
 

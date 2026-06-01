@@ -260,6 +260,29 @@ function findHostedOpenAiPayPalButton() {
     || document.querySelector('.paypal-accordion-item button');
 }
 
+async function ensureHostedOpenAiPayPalSelected() {
+  const directButton = findHostedOpenAiPayPalButton();
+  if (directButton) {
+    simulateClick(directButton);
+    await sleep(500);
+    simulateClick(directButton);
+  } else {
+    await selectPaymentMethod(PLUS_PAYMENT_METHOD_PAYPAL);
+  }
+
+  if (!await waitForPaymentMethodActive(PLUS_PAYMENT_METHOD_PAYPAL, 7000)) {
+    const diagnostics = writePayPalDiagnostics('hosted checkout 提交前未确认 PayPal 选中', 'error');
+    throw new Error(`hosted checkout 提交前未确认 PayPal 付款方式已选中，已停止以避免进入银行卡表单。候选数量：${diagnostics.paymentCandidates.length}，银行卡字段可见：${diagnostics.cardFieldsVisible ? '是' : '否'}。`);
+  }
+
+  if (hasCreditCardFields()) {
+    const diagnostics = writePayPalDiagnostics('hosted checkout PayPal 选中后仍显示银行卡字段', 'error');
+    throw new Error(`hosted checkout PayPal 选中后仍显示银行卡字段，已停止提交。候选数量：${diagnostics.paymentCandidates.length}。`);
+  }
+
+  return true;
+}
+
 function findHostedOpenAiSubmitButton() {
   const direct = document.querySelector('button[data-testid="submit-button"]')
     || document.querySelector('button[data-testid="hosted-payment-submit-button"]')
@@ -408,17 +431,11 @@ async function runHostedOpenAiCheckoutStep(payload = {}) {
   }
 
   await sleep(2000);
-  const payPalButton = findHostedOpenAiPayPalButton();
-  if (payPalButton) {
-    simulateClick(payPalButton);
-    await sleep(500);
-    simulateClick(payPalButton);
-  }
-
+  await ensureHostedOpenAiPayPalSelected();
   await sleep(3000);
 
   const address = payload.address && typeof payload.address === 'object' ? payload.address : {};
-  await selectCountryDropdown(findCountryDropdown(), 'US');
+  await selectCountryDropdown(findCountryDropdown(), address.countryCode || 'US');
   fillHostedOpenAiInputBySelector('#billingAddressLine1', address.street || '');
   fillHostedOpenAiInputBySelector('#billingLocality', address.city || '');
   fillHostedOpenAiInputBySelector('#billingPostalCode', address.zip || '');

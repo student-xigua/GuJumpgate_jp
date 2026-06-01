@@ -12,6 +12,7 @@
   const PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION = 'cpa_codex_session';
   const SIGNUP_METHOD_EMAIL = 'email';
   const SIGNUP_METHOD_PHONE = 'phone';
+  const LOCAL_CPA_JSON_PANEL_MODE = 'local-cpa-json';
 
   const NORMAL_PREFIX_STEP_DEFINITIONS = [
     { id: 1, order: 10, key: 'open-chatgpt', title: '打开 ChatGPT 官网', sourceId: 'chatgpt', driverId: null, command: 'open-chatgpt' },
@@ -37,7 +38,16 @@
     { id: 8, order: 80, key: 'paypal-approve', title: 'PayPal 登录与授权', sourceId: 'paypal-flow', driverId: 'content/paypal-flow', command: 'paypal-approve' },
     { id: 9, order: 90, key: 'plus-checkout-return', title: '订阅回跳确认', sourceId: 'plus-checkout', driverId: 'content/plus-checkout', command: 'plus-checkout-return' },
   ];
-  const PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS = PLUS_PAYPAL_PREFIX_STEP_DEFINITIONS.slice(0, 6);
+  const PLUS_PAYPAL_HOSTED_CHECKOUT_CREATE_PREFIX_STEP_DEFINITIONS = PLUS_PAYPAL_PREFIX_STEP_DEFINITIONS.slice(0, 6);
+  const PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS = [
+    ...PLUS_PAYPAL_HOSTED_CHECKOUT_CREATE_PREFIX_STEP_DEFINITIONS,
+    { id: 7, order: 70, key: 'plus-hosted-openai-checkout', title: 'OpenAI 支付页提交', sourceId: 'plus-checkout', driverId: 'content/plus-checkout', command: 'plus-hosted-openai-checkout' },
+    { id: 8, order: 80, key: 'plus-hosted-paypal-email', title: 'PayPal 邮箱页', sourceId: 'paypal-flow', driverId: 'content/paypal-flow', command: 'plus-hosted-paypal-email' },
+    { id: 9, order: 90, key: 'plus-hosted-paypal-verification', title: 'PayPal 验证码页', sourceId: 'paypal-flow', driverId: 'content/paypal-flow', command: 'plus-hosted-paypal-verification' },
+    { id: 10, order: 100, key: 'plus-hosted-paypal-card', title: 'PayPal 卡支付页', sourceId: 'paypal-flow', driverId: 'content/paypal-flow', command: 'plus-hosted-paypal-card' },
+    { id: 11, order: 110, key: 'plus-hosted-paypal-review', title: 'PayPal 账单确认页', sourceId: 'paypal-flow', driverId: 'content/paypal-flow', command: 'plus-hosted-paypal-review' },
+    { id: 12, order: 120, key: 'plus-hosted-success-confirm', title: '支付成功回跳确认', sourceId: 'plus-checkout', driverId: 'content/plus-checkout', command: 'plus-hosted-success-confirm' },
+  ];
   const LOCAL_CPA_JSON_NO_RT_EXPORT_STEP_DEFINITION = {
     id: 7,
     order: 70,
@@ -241,23 +251,23 @@
   );
   const PLUS_PAYPAL_PHONE_STEP_DEFINITIONS = createOpenAiSteps(PLUS_PAYPAL_PREFIX_STEP_DEFINITIONS, 10, 100, SIGNUP_METHOD_PHONE);
   const PLUS_PAYPAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS = createOpenAiSteps(PLUS_PAYPAL_PREFIX_STEP_DEFINITIONS, 10, 100, SIGNUP_METHOD_PHONE, { phoneSignupReloginAfterBindEmailEnabled: true });
-  const PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS = createHostedCheckoutSteps(PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS, 7, 70, SIGNUP_METHOD_EMAIL);
+  const PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS = createHostedCheckoutSteps(PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS, 13, 130, SIGNUP_METHOD_EMAIL);
   const PLUS_PAYPAL_HOSTED_CHECKOUT_SUB2API_SESSION_STEP_DEFINITIONS = createHostedCheckoutSteps(
     PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS,
-    7,
-    70,
+    13,
+    130,
     SIGNUP_METHOD_EMAIL,
     { plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION }
   );
   const PLUS_PAYPAL_HOSTED_CHECKOUT_CPA_SESSION_STEP_DEFINITIONS = createHostedCheckoutSteps(
     PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS,
-    7,
-    70,
+    13,
+    130,
     SIGNUP_METHOD_EMAIL,
     { plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION }
   );
-  const PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_STEP_DEFINITIONS = createHostedCheckoutSteps(PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS, 7, 70, SIGNUP_METHOD_PHONE);
-  const PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS = createHostedCheckoutSteps(PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS, 7, 70, SIGNUP_METHOD_PHONE, { phoneSignupReloginAfterBindEmailEnabled: true });
+  const PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_STEP_DEFINITIONS = createHostedCheckoutSteps(PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS, 13, 130, SIGNUP_METHOD_PHONE);
+  const PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS = createHostedCheckoutSteps(PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS, 13, 130, SIGNUP_METHOD_PHONE, { phoneSignupReloginAfterBindEmailEnabled: true });
   const PLUS_GOPAY_STEP_DEFINITIONS = createOpenAiSteps(PLUS_GOPAY_PREFIX_STEP_DEFINITIONS, 10, 100, SIGNUP_METHOD_EMAIL);
   const PLUS_GOPAY_SUB2API_SESSION_STEP_DEFINITIONS = createOpenAiSteps(
     PLUS_GOPAY_PREFIX_STEP_DEFINITIONS,
@@ -347,7 +357,7 @@
       && isPhoneSignupReloginAfterBindEmailEnabled(options);
     if (panelMode === LOCAL_CPA_JSON_NO_RT_PANEL_MODE) {
       return [
-        ...PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS,
+        ...PLUS_PAYPAL_HOSTED_CHECKOUT_CREATE_PREFIX_STEP_DEFINITIONS,
         LOCAL_CPA_JSON_NO_RT_EXPORT_STEP_DEFINITION,
       ];
     }
@@ -455,6 +465,7 @@
           ...PLUS_PAYPAL_HOSTED_CHECKOUT_SUB2API_SESSION_STEP_DEFINITIONS,
           ...PLUS_PAYPAL_HOSTED_CHECKOUT_CPA_SESSION_STEP_DEFINITIONS,
           ...PLUS_PAYPAL_HOSTED_CHECKOUT_PREFIX_STEP_DEFINITIONS,
+          ...PLUS_PAYPAL_HOSTED_CHECKOUT_CREATE_PREFIX_STEP_DEFINITIONS,
           LOCAL_CPA_JSON_NO_RT_EXPORT_STEP_DEFINITION,
           ...PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_STEP_DEFINITIONS,
           ...PLUS_PAYPAL_HOSTED_CHECKOUT_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS,
@@ -511,8 +522,18 @@
     return steps.map((step) => ({
       ...step,
       flowId,
-      title: builder?.resolveStepTitle ? builder.resolveStepTitle(step, options) : step.title,
+      title: resolvePanelStepTitle(step, options, builder),
     }));
+  }
+
+  function resolvePanelStepTitle(step = {}, options = {}, builder = null) {
+    if (
+      String(options?.panelMode || '').trim().toLowerCase() === LOCAL_CPA_JSON_PANEL_MODE
+      && step?.key === 'platform-verify'
+    ) {
+      return '本地CPA JSON 有RT 导出';
+    }
+    return builder?.resolveStepTitle ? builder.resolveStepTitle(step, options) : step.title;
   }
 
   function cloneNodes(steps = [], options = {}, flowId = DEFAULT_ACTIVE_FLOW_ID) {
@@ -521,7 +542,7 @@
       legacyStepId: Number(step.id),
       nodeId: String(step.key || '').trim(),
       flowId,
-      title: builder?.resolveStepTitle ? builder.resolveStepTitle(step, options) : step.title,
+      title: resolvePanelStepTitle(step, options, builder),
       displayOrder: Number.isFinite(Number(step.order)) ? Number(step.order) : Number(step.id),
       nodeType: 'task',
       sourceId: step.sourceId || '',

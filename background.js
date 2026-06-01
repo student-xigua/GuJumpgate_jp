@@ -105,6 +105,26 @@ const PLUS_PAYPAL_CPA_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.
   plusPaymentMethod: 'paypal',
   plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION,
 }) || PLUS_PAYPAL_STEP_DEFINITIONS;
+const PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
+  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
+  plusModeEnabled: true,
+  plusPaymentMethod: 'paypal',
+  plusHostedCheckoutIsFinalStep: true,
+}) || PLUS_PAYPAL_STEP_DEFINITIONS;
+const PLUS_PAYPAL_HOSTED_CHECKOUT_SUB2API_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
+  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
+  plusModeEnabled: true,
+  plusPaymentMethod: 'paypal',
+  plusHostedCheckoutIsFinalStep: true,
+  plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION,
+}) || PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS;
+const PLUS_PAYPAL_HOSTED_CHECKOUT_CPA_SESSION_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
+  activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
+  plusModeEnabled: true,
+  plusPaymentMethod: 'paypal',
+  plusHostedCheckoutIsFinalStep: true,
+  plusAccountAccessStrategy: PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION,
+}) || PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS;
 const PLUS_PAYPAL_PHONE_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getSteps?.({
   activeFlowId: DEFAULT_ACTIVE_FLOW_ID,
   plusModeEnabled: true,
@@ -193,6 +213,9 @@ const ALL_STEP_DEFINITIONS = self.MultiPageStepDefinitions?.getAllSteps?.({
   ...PLUS_PAYPAL_STEP_DEFINITIONS,
   ...PLUS_PAYPAL_SUB2API_SESSION_STEP_DEFINITIONS,
   ...PLUS_PAYPAL_CPA_SESSION_STEP_DEFINITIONS,
+  ...PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS,
+  ...PLUS_PAYPAL_HOSTED_CHECKOUT_SUB2API_SESSION_STEP_DEFINITIONS,
+  ...PLUS_PAYPAL_HOSTED_CHECKOUT_CPA_SESSION_STEP_DEFINITIONS,
   ...PLUS_PAYPAL_PHONE_STEP_DEFINITIONS,
   ...PLUS_PAYPAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS,
   ...PLUS_GOPAY_STEP_DEFINITIONS,
@@ -1198,6 +1221,9 @@ const DEFAULT_STATE = {
   plusCheckoutCurrency: 'EUR',
   plusCheckoutSource: '',
   hostedCheckoutCurrentSmsEntry: null,
+  plusHostedCheckoutAddress: null,
+  plusHostedCheckoutGuestProfile: null,
+  plusHostedCheckoutVerificationResendAttempts: 0,
   plusBillingCountryText: '',
   plusBillingAddress: null,
   plusPaypalApprovedAt: null,
@@ -5040,6 +5066,136 @@ function buildHotmailLocalEndpoint(baseUrl, path) {
   return new URL(path, `${normalizedBaseUrl}/`).toString();
 }
 
+function buildHotmailRemoteEndpoint(baseUrl, path) {
+  const normalizedBaseUrl = normalizeHotmailRemoteBaseUrl(baseUrl);
+  if (!normalizedBaseUrl) {
+    return '';
+  }
+  return new URL(path, `${normalizedBaseUrl}/`).toString();
+}
+
+function parseHotmailRemotePayload(text = '') {
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { raw: text };
+  }
+}
+
+function isHotmailRemoteMessageLike(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  return Boolean(
+    value.subject
+    || value.title
+    || value.bodyPreview
+    || value.preview
+    || value.snippet
+    || value.text
+    || value.body
+    || value.html
+    || value.content
+    || value.from
+    || value.sender
+    || value.from_email
+    || value.sender_email
+    || value.receivedDateTime
+    || value.received_at
+    || value.receivedAt
+    || value.date
+    || value.created_at
+    || value.time
+  );
+}
+
+function extractHotmailRemoteMessages(payload = {}) {
+  const candidates = [
+    payload,
+    payload?.messages,
+    payload?.message,
+    payload?.mail,
+    payload?.mailList,
+    payload?.latest,
+    payload?.latestMail,
+    payload?.data,
+    payload?.data?.messages,
+    payload?.data?.message,
+    payload?.data?.mail,
+    payload?.data?.mailList,
+    payload?.data?.latest,
+    payload?.result,
+    payload?.result?.messages,
+    payload?.result?.message,
+    payload?.result?.mail,
+    payload?.result?.mailList,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+    if (isHotmailRemoteMessageLike(candidate)) {
+      return [candidate];
+    }
+  }
+
+  return [];
+}
+
+function getHotmailRemoteNextRefreshToken(payload = {}) {
+  return String(
+    payload?.nextRefreshToken
+    || payload?.next_refresh_token
+    || payload?.refreshToken
+    || payload?.refresh_token
+    || payload?.data?.nextRefreshToken
+    || payload?.data?.next_refresh_token
+    || payload?.data?.refreshToken
+    || payload?.data?.refresh_token
+    || payload?.result?.nextRefreshToken
+    || payload?.result?.next_refresh_token
+    || payload?.result?.refreshToken
+    || payload?.result?.refresh_token
+    || ''
+  ).trim();
+}
+
+function getHotmailRemoteErrorText(payload = {}, fallbackText = '') {
+  return String(
+    payload?.error
+    || payload?.message
+    || payload?.msg
+    || payload?.data?.error
+    || payload?.data?.message
+    || payload?.data?.msg
+    || payload?.result?.error
+    || payload?.result?.message
+    || payload?.result?.msg
+    || fallbackText
+    || ''
+  ).trim();
+}
+
+function redactHotmailRemoteErrorText(text = '', account = {}) {
+  let value = String(text || '');
+  for (const secret of [account.refreshToken, account.clientId].map((item) => String(item || '').trim()).filter(Boolean)) {
+    value = value.split(secret).join('[redacted]');
+  }
+  return value;
+}
+
+function isHotmailRemoteFailurePayload(payload = {}) {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+  if (payload.ok === false || payload.success === false) {
+    return true;
+  }
+  const status = String(payload.status || payload.code || '').trim().toLowerCase();
+  return ['error', 'failed', 'fail', 'false'].includes(status);
+}
+
 async function requestHotmailRemoteMailbox(account, mailbox = 'INBOX') {
   if (!account?.email) {
     throw new Error('Hotmail 账号缺少邮箱地址。');
@@ -5051,11 +5207,54 @@ async function requestHotmailRemoteMailbox(account, mailbox = 'INBOX') {
     throw new Error(`Hotmail 账号 ${account.email || account.id} 缺少刷新令牌（refresh token）。`);
   }
 
+  const serviceSettings = getHotmailServiceSettings(await getState());
   const { timeoutMs } = getHotmailMailApiRequestConfig();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs);
 
   try {
+    if (serviceSettings.remoteBaseUrl) {
+      const endpoint = buildHotmailRemoteEndpoint(serviceSettings.remoteBaseUrl, '/api/mail-new');
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          refresh_token: account.refreshToken,
+          client_id: account.clientId,
+          email: account.email,
+          mailbox,
+          response_type: 'json',
+        }),
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      const payload = parseHotmailRemotePayload(text);
+      if (!response.ok || isHotmailRemoteFailurePayload(payload)) {
+        const errorText = redactHotmailRemoteErrorText(
+          getHotmailRemoteErrorText(payload, text || `HTTP ${response.status}`),
+          account
+        );
+        throw new Error(`Hotmail 第三方 API 返回失败：${errorText}`);
+      }
+
+      const rawMessages = extractHotmailRemoteMessages(payload);
+      return {
+        mailbox,
+        payload: {
+          source: 'hotmail-remote-api',
+          remoteBaseUrl: serviceSettings.remoteBaseUrl,
+        },
+        messages: normalizeHotmailMailApiMessages(rawMessages).map((message, index) => ({
+          ...message,
+          mailbox: rawMessages[index]?.mailbox || mailbox,
+        })),
+        nextRefreshToken: getHotmailRemoteNextRefreshToken(payload),
+      };
+    }
+
     const result = await fetchMicrosoftMailboxMessages({
       clientId: account.clientId,
       refreshToken: account.refreshToken,
@@ -9630,6 +9829,12 @@ function isPlusCheckoutRestartStep(step, stepExecutionKey = '', state = {}) {
   const normalizedKey = String(stepExecutionKey || '').trim();
   if (normalizedKey) {
     return normalizedKey === 'plus-checkout-create'
+      || normalizedKey === 'plus-hosted-openai-checkout'
+      || normalizedKey === 'plus-hosted-paypal-email'
+      || normalizedKey === 'plus-hosted-paypal-verification'
+      || normalizedKey === 'plus-hosted-paypal-card'
+      || normalizedKey === 'plus-hosted-paypal-review'
+      || normalizedKey === 'plus-hosted-success-confirm'
       || normalizedKey === 'plus-checkout-billing'
       || normalizedKey === 'gopay-subscription-confirm';
   }
@@ -9735,6 +9940,9 @@ function getDownstreamStateResets(step, state = {}) {
     plusPaypalApprovedAt: null,
     plusGoPayApprovedAt: null,
     plusReturnUrl: '',
+    plusHostedCheckoutAddress: null,
+    plusHostedCheckoutGuestProfile: null,
+    plusHostedCheckoutVerificationResendAttempts: 0,
     plusManualConfirmationPending: false,
     plusManualConfirmationRequestId: '',
     plusManualConfirmationStep: 0,
@@ -9849,6 +10057,9 @@ function getDownstreamStateResets(step, state = {}) {
         plusPaypalApprovedAt: null,
         plusGoPayApprovedAt: null,
         plusReturnUrl: '',
+        plusHostedCheckoutAddress: null,
+        plusHostedCheckoutGuestProfile: null,
+        plusHostedCheckoutVerificationResendAttempts: 0,
         plusManualConfirmationPending: false,
         plusManualConfirmationRequestId: '',
         plusManualConfirmationStep: 0,
@@ -10944,6 +11155,12 @@ const AUTO_RUN_BACKGROUND_COMPLETED_STEP_KEYS = new Set([
   'fetch-signup-code',
   'wait-registration-success',
   'local-cpa-json-export',
+  'plus-hosted-openai-checkout',
+  'plus-hosted-paypal-email',
+  'plus-hosted-paypal-verification',
+  'plus-hosted-paypal-card',
+  'plus-hosted-paypal-review',
+  'plus-hosted-success-confirm',
   'plus-checkout-billing',
   'paypal-approve',
   'plus-checkout-return',
@@ -11072,15 +11289,21 @@ function getAutoRunPreExecutionDelayMs(step, state = {}) {
 
 function isHostedCheckoutUploadCompletionNode(nodeId, state = {}) {
   const executionKey = getNodeExecutionKeyForState(nodeId, state);
-  if ((executionKey || nodeId) !== 'plus-checkout-create') {
-    return false;
-  }
   const plusModeEnabled = Boolean(state?.plusModeEnabled);
   const plusPaymentMethod = String(state?.plusPaymentMethod || '').trim().toLowerCase();
   const hostedCheckoutWaitEnabled = state?.plusHostedCheckoutIsFinalStep !== false;
+  const hostedCheckoutNodeIds = new Set([
+    'plus-hosted-openai-checkout',
+    'plus-hosted-paypal-email',
+    'plus-hosted-paypal-verification',
+    'plus-hosted-paypal-card',
+    'plus-hosted-paypal-review',
+    'plus-hosted-success-confirm',
+  ]);
   return plusModeEnabled
     && plusPaymentMethod === 'paypal'
-    && hostedCheckoutWaitEnabled;
+    && hostedCheckoutWaitEnabled
+    && hostedCheckoutNodeIds.has(executionKey || nodeId);
 }
 
 function getNodeCompletionSignalTimeoutMs(nodeId, state = {}) {
@@ -12057,6 +12280,12 @@ const AUTO_RUN_NODE_DELAYS = Object.freeze({
   'fill-profile': 0,
   'wait-registration-success': 3000,
   'plus-checkout-create': 3000,
+  'plus-hosted-openai-checkout': 1000,
+  'plus-hosted-paypal-email': 1000,
+  'plus-hosted-paypal-verification': 1000,
+  'plus-hosted-paypal-card': 1000,
+  'plus-hosted-paypal-review': 1000,
+  'plus-hosted-success-confirm': 1000,
   'plus-checkout-billing': 2000,
   'gopay-subscription-confirm': 2000,
   'paypal-approve': 2000,
@@ -13957,6 +14186,12 @@ const stepExecutorsByKey = {
   'wait-registration-success': (state) => step6Executor.executeStep6(state),
   'local-cpa-json-export': (state) => step6Executor.executeLocalCpaJsonNoRtExport(state),
   'plus-checkout-create': (state) => plusCheckoutCreateExecutor.executePlusCheckoutCreate(state),
+  'plus-hosted-openai-checkout': (state) => plusCheckoutCreateExecutor.executeHostedOpenAiCheckout(state),
+  'plus-hosted-paypal-email': (state) => plusCheckoutCreateExecutor.executeHostedPayPalEmail(state),
+  'plus-hosted-paypal-verification': (state) => plusCheckoutCreateExecutor.executeHostedPayPalVerification(state),
+  'plus-hosted-paypal-card': (state) => plusCheckoutCreateExecutor.executeHostedPayPalCard(state),
+  'plus-hosted-paypal-review': (state) => plusCheckoutCreateExecutor.executeHostedPayPalReview(state),
+  'plus-hosted-success-confirm': (state) => plusCheckoutCreateExecutor.executeHostedSuccessConfirm(state),
   'plus-checkout-billing': (state) => plusCheckoutBillingExecutor.executePlusCheckoutBilling(state),
   'gopay-subscription-confirm': (state) => goPayManualConfirmExecutor.executeGoPayManualConfirm(state),
   'paypal-approve': (state) => normalizePlusPaymentMethod(state?.plusPaymentMethod) === PLUS_PAYMENT_METHOD_GOPAY
@@ -14163,6 +14398,9 @@ const plusPayPalPhoneStepRegistry = buildStepRegistry(PLUS_PAYPAL_PHONE_STEP_DEF
 const plusPayPalPhoneBoundEmailReloginStepRegistry = buildStepRegistry(PLUS_PAYPAL_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS);
 const plusPayPalSub2ApiSessionStepRegistry = buildStepRegistry(PLUS_PAYPAL_SUB2API_SESSION_STEP_DEFINITIONS);
 const plusPayPalCpaSessionStepRegistry = buildStepRegistry(PLUS_PAYPAL_CPA_SESSION_STEP_DEFINITIONS);
+const plusPayPalHostedCheckoutStepRegistry = buildStepRegistry(PLUS_PAYPAL_HOSTED_CHECKOUT_STEP_DEFINITIONS);
+const plusPayPalHostedCheckoutSub2ApiSessionStepRegistry = buildStepRegistry(PLUS_PAYPAL_HOSTED_CHECKOUT_SUB2API_SESSION_STEP_DEFINITIONS);
+const plusPayPalHostedCheckoutCpaSessionStepRegistry = buildStepRegistry(PLUS_PAYPAL_HOSTED_CHECKOUT_CPA_SESSION_STEP_DEFINITIONS);
 const plusGoPayStepRegistry = buildStepRegistry(PLUS_GOPAY_STEP_DEFINITIONS);
 const plusGoPayPhoneStepRegistry = buildStepRegistry(PLUS_GOPAY_PHONE_STEP_DEFINITIONS);
 const plusGoPayPhoneBoundEmailReloginStepRegistry = buildStepRegistry(PLUS_GOPAY_PHONE_BOUND_EMAIL_RELOGIN_STEP_DEFINITIONS);
@@ -14219,6 +14457,16 @@ function getStepRegistryForState(state = {}) {
       return useBoundEmailRelogin ? plusGoPayPhoneBoundEmailReloginStepRegistry : plusGoPayPhoneStepRegistry;
     }
     return plusGoPayStepRegistry;
+  }
+  const useHostedCheckoutFinalStep = state?.plusHostedCheckoutIsFinalStep !== false;
+  if (useHostedCheckoutFinalStep) {
+    if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
+      return plusPayPalHostedCheckoutSub2ApiSessionStepRegistry;
+    }
+    if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_CPA_CODEX_SESSION) {
+      return plusPayPalHostedCheckoutCpaSessionStepRegistry;
+    }
+    return plusPayPalHostedCheckoutStepRegistry;
   }
   if (plusAccountAccessStrategy === PLUS_ACCOUNT_ACCESS_STRATEGY_SUB2API_CODEX_SESSION) {
     return plusPayPalSub2ApiSessionStepRegistry;
